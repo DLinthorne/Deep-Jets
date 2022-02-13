@@ -1,15 +1,17 @@
+# Generic/Built-in
+import os
+
+# Other Libs
 from scipy.interpolate import UnivariateSpline
 import numpy as np
 import pickle
-import os
 
 
-def ZFromEtaR(eta, r):
-    """Z coordinate transformation from pseudorapidity and r
-
+def eta_r_to_z(eta, r):
+    """
     Arguments:
     eta -- object's pesudorapidity relative to beam axis
-     r -- radial distance from the beamline
+    r -- radial distance from the beamline
 
     Returns:
     z   -- object's longitudinal coordinate aligned with beam axis
@@ -17,9 +19,8 @@ def ZFromEtaR(eta, r):
     return r * np.sinh(eta)
 
 
-def RFromEtaZ(eta, z):
-    """Radial coordinate transformation from pseudorapidity and z
-
+def eta_z_to_r(eta, z):
+    """
     Arguments:
     eta -- object's pesudorapidity relative to beam axis
     z   -- object's longitudinal coordinate aligned with beam axis
@@ -35,9 +36,8 @@ def RFromEtaZ(eta, z):
         return float('Inf')
 
 
-def ReadGrid(fname, with_header=True):
-    """Read and interpolate tracker grids
-
+def read_grid(fname, with_header=True):
+    """
     Arguments:
     fname  -- file path to grids
     with_header -- flag on whether grid files have header data
@@ -46,7 +46,6 @@ def ReadGrid(fname, with_header=True):
     func   -- list of interpolated splines of layer grids
     ranges -- list of layer dimensions in (r,z,?)
     """
-
     ranges = []
     header_flag = 0
     if with_header:
@@ -61,61 +60,59 @@ def ReadGrid(fname, with_header=True):
     return [funcs, ranges]
 
 
-def InitLayersATLAS(ATLASdir = "/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&_Dylan/PythonSym/"):
+def init_layers_atlas(ATLASdir ="/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&_Dylan/PythonSym/"):
     """
     Initializes the tracking layers using ATLAS geometric specifications:
     PIPE -> IBL -> PIXEL -> SCT -> TRT
-    Estimate energy loss due to material interactions for each layer
 
     Arguments:
     ATLASdir -- path to ATLAS geometry files
 
     Returns:
-    layers_e -- interpolated slines of each layer and EM loss relevant for electron propagation
-    layers_mu -- interpolated slines of each layer and EM loss relevant for muon propagation
-    layers_pi -- interpolated slines of each layer and EM loss relevant for pion propagation
+    layers_e -- interpolated slines of each layer relevant for electron propagation
+    layers_mu -- interpolated slines of each layer relevant for muon propagation
+    layers_pi -- interpolated slines of each layer relevant for pion propagation
     """
+    pipe = read_grid(ATLASdir + 'ATLASEMlossPipe.csv')
+    mat = read_grid(ATLASdir + 'ATLASEMlossService.csv')
+    IBL = read_grid(ATLASdir + 'ATLASEMlossIBL.csv')
+    pixel_barrel = [read_grid(ATLASdir + 'ATLASEMlossPixelB' + str(i) + '.csv') for i in range(1, 4)]
+    pixel_wheel = [read_grid(ATLASdir + 'ATLASEMlossPixelW' + str(i) + '.csv') for i in range(1, 4)]
+    sct_barrel = [read_grid(ATLASdir + 'ATLASEMlossSctB' + str(i) + '.csv') for i in range(1, 5)]
+    sct_wheel = [read_grid(ATLASdir + 'ATLASEMlossSctW' + str(i) + '.csv') for i in range(1, 10)]
+    trt_barrel = [read_grid(ATLASdir + 'ATLASEMlossTRTB' + str(i) + '.csv') for i in range(1, 5)]
+    trt_wheel = [read_grid(ATLASdir + 'ATLASEMlossTRTW' + str(i) + '.csv') for i in range(1, 5)]
 
-    pipe = ReadGrid(ATLASdir+'ATLASEMlossPipe.csv')
-    mat = ReadGrid(ATLASdir+'ATLASEMlossService.csv')
-    IBL = ReadGrid(ATLASdir+'ATLASEMlossIBL.csv')
-    pixelbarrel = [ReadGrid(ATLASdir+'ATLASEMlossPixelB'+str(i)+'.csv') for i in range(1, 4)]
-    pixelwheel = [ReadGrid(ATLASdir+'ATLASEMlossPixelW'+str(i)+'.csv') for i in range(1, 4)]
-    sctbarrel = [ReadGrid(ATLASdir+'ATLASEMlossSctB'+str(i)+'.csv') for i in range(1, 5)]
-    sctwheel = [ReadGrid(ATLASdir+'ATLASEMlossSctW'+str(i)+'.csv') for i in range(1, 10)]
-    trtbarrel = [ReadGrid(ATLASdir+'ATLASEMlossTRTB'+str(i)+'.csv') for i in range(1, 5)]
-    trtwheel = [ReadGrid(ATLASdir+'ATLASEMlossTRTW'+str(i)+'.csv') for i in range(1, 5)]
+    dummy_loss = lambda x: 0.
 
-    dummyloss = lambda x: 0.
+    layer_positions = ([pipe[1]] + [IBL[1]] + [pixel_barrel[i][1] for i in range(0, 3)]
+                       + [pixel_wheel[i][1] for i in range(0, 3)] + [mat[1]]
+                       + [sct_barrel[i][1] for i in range(0, 4)]
+                       + [sct_wheel[i][1] for i in range(0, 9)]
+                       + [trt_barrel[i][1] for i in range(0, 4)]
+                       + [trt_wheel[i][1] for i in range(0, 4)]
+                       + [[115., 0, eta_r_to_z(1.5, 115.)],
+                          [eta_z_to_r(3.5, eta_r_to_z(1.5, 115.)), 115., eta_r_to_z(1.5, 115.)]])
 
-    layer_positions = ([pipe[1]] + [IBL[1]] + [pixelbarrel[i][1] for i in range(0, 3)]
-                       + [pixelwheel[i][1] for i in range(0, 3)] + [mat[1]]
-                       + [sctbarrel[i][1] for i in range(0, 4)]
-                       + [sctwheel[i][1] for i in range(0, 9)]
-                       + [trtbarrel[i][1] for i in range(0, 4)]
-                       + [trtwheel[i][1] for i in range(0, 4)]
-                       + [[115., 0, ZFromEtaR(1.5, 115.)],
-                          [RFromEtaZ(3.5, ZFromEtaR(1.5, 115.)), 115., ZFromEtaR(1.5, 115.)]])
+    layer_EMloss = ([pipe[0][0]] + [IBL[0][0]] + [pixel_barrel[i][0][0] for i in range(0, 3)]
+                    + [pixel_wheel[i][0][0] for i in range(0, 3)] + [mat[0][0]]
+                    + [sct_barrel[i][0][0] for i in range(0, 4)]
+                    + [sct_wheel[i][0][0] for i in range(0, 9)]
+                    + [trt_barrel[i][0][0] for i in range(0, 4)]
+                    + [trt_wheel[i][0][0] for i in range(0, 4)]
+                    + [dummy_loss, dummy_loss])
 
-    layer_EMloss = ([pipe[0][0]] + [IBL[0][0]] + [pixelbarrel[i][0][0] for i in range(0, 3)]
-                    + [pixelwheel[i][0][0] for i in range(0, 3)] + [mat[0][0]]
-                    + [sctbarrel[i][0][0] for i in range(0, 4)]
-                    + [sctwheel[i][0][0] for i in range(0, 9)]
-                    + [trtbarrel[i][0][0] for i in range(0, 4)]
-                    + [trtwheel[i][0][0] for i in range(0, 4)]
-                    + [dummyloss, dummyloss])
-
-    layer_dummyloss = [dummyloss for i in range(0, len(layer_positions))]
+    layer_dummy_loss = [dummy_loss for i in range(0, len(layer_positions))]
 
     #todo: to be changed once grids are available
 
-    layer_HADloss = layer_dummyloss
+    layer_HADloss = layer_dummy_loss
     layer_dimensions = ([[None, None, None]] + [[0.005 / IBL[1][0], 0.025, 0.023]]
-                        + [[0.005 / pixelbarrel[i][1][0], 0.04, 0.025] for i in range(0, 3)]
-                        + [[0.005 / pixelwheel[i][1][0], 0.04, 0.025] for i in range(0, 3)]
+                        + [[0.005 / pixel_barrel[i][1][0], 0.04, 0.025] for i in range(0, 3)]
+                        + [[0.005 / pixel_wheel[i][1][0], 0.04, 0.025] for i in range(0, 3)]
                         + [[None, None, None]]
-                        + [[0.008 / sctbarrel[i][1][0], 6.39, 0.0285] for i in range(0, 4)]
-                        + [[0.006 / sctwheel[i][1][0], 6.39, 0.0285] for i in range(0, 9)]
+                        + [[0.008 / sct_barrel[i][1][0], 6.39, 0.0285] for i in range(0, 4)]
+                        + [[0.006 / sct_wheel[i][1][0], 6.39, 0.0285] for i in range(0, 9)]
                         + [[None, None, None] for i in range(0, 4)]
                         + [[None, None, None] for i in range(0, 4)]
                         + [[2. * np.pi / 256., 0.025, None], [2. * np.pi / 256., 0.025, None]])
@@ -133,22 +130,27 @@ def InitLayersATLAS(ATLASdir = "/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&_D
                     + [True, False])
 
     layers_e = [[a, b, c, d] for a, b, c, d in zip(layer_positions, layer_EMloss, layer_dimensions, layer_orient)]
-    layers_mu = [[a, b, c, d] for a, b, c, d in zip(layer_positions, layer_dummyloss, layer_dimensions, layer_orient)]
+    layers_mu = [[a, b, c, d] for a, b, c, d in zip(layer_positions, layer_dummy_loss, layer_dimensions, layer_orient)]
     layers_pi = [[a, b, c, d] for a, b, c, d in zip(layer_positions, layer_HADloss, layer_dimensions, layer_orient)]
 
     return (layers_e, layers_mu, layers_pi)
 
-def InitIonization(ATLASdir = "/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&_Dylan/PythonSym/"):
-    return (ReadGrid(ATLASdir+'IonElossEles.csv', False)[0],
-            ReadGrid(ATLASdir+'IonElossMus.csv', False)[0],
-            ReadGrid(ATLASdir+'IonElossPis.csv', False)[0])
 
-def WriteLayersEvent(layer, timeoutfrac, eventheader,trackfile):
+def init_ionization(ATLASdir ="/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&_Dylan/PythonSym/"):
+
+    return (read_grid(ATLASdir + 'IonElossEles.csv', False)[0],
+            read_grid(ATLASdir + 'IonElossMus.csv', False)[0],
+            read_grid(ATLASdir + 'IonElossPis.csv', False)[0])
+
+
+def write_layer_events(layer, timeoutfrac, eventheader, trackfile):
+
     pickle.dump(eventheader[1]+" "+str(timeoutfrac), trackfile,  protocol=0)
     pickle.dump(layer, trackfile,  protocol=0)
 
-def ProcessEvent(hepmcfile, event_header, ecalfile, trackerfilelist, layers_e, layers_mu,
-                 layers_meson, ion_e, ion_mu, ion_meson, Bfield=2):
+
+def process_event(hepmcfile, event_header, ecalfile, trackerfilelist, layers_e, layers_mu,
+                  layers_meson, ion_e, ion_mu, ion_meson, Bfield=2):
 
     timeouts = [0]*len(layers_e)
 
@@ -293,7 +295,7 @@ def ProcessEvent(hepmcfile, event_header, ecalfile, trackerfilelist, layers_e, l
         #read next vertex
         line = hepmcfile.readline()
     #write hits (only IBL)
-    WriteLayersEvent(layerHits[1], timeouts[1]/max(len(particle_list),1),event_header,trackerfilelist[0])
+    write_layer_events(layerHits[1], timeouts[1] / max(len(particle_list), 1), event_header, trackerfilelist[0])
     #write hits (all layers)
     #[WriteLayersEvent(layerHits[idx], timeouts[idx]/max(len(particle_list),1),event_header,trackerfilelist[idx-1])
     # for idx in range(1,5)]
@@ -304,11 +306,11 @@ def ProcessEvent(hepmcfile, event_header, ecalfile, trackerfilelist, layers_e, l
 
 if __name__ == '__main__':
 
-    datadir = "/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&_Dylan/"
+    data_dir = "/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&_Dylan/"
 
-    ATLASdir = datadir + "PythonSym/"
-    hep_file = datadir + "truth/Bkg_truth.hepmc"
-    tracker_file_temp = datadir + "tracker/" + "Bkg_truth.hepmc".replace("truth", "tracker_LAYERID").replace(".hepmc",
+    ATLASdir = data_dir + "PythonSym/"
+    hep_file = data_dir + "truth/Bkg_truth.hepmc"
+    tracker_file_temp = data_dir + "tracker/" + "Bkg_truth.hepmc".replace("truth", "tracker_LAYERID").replace(".hepmc",
                                                                                                              ".txt")
     tracker_file_list = [tracker_file_temp.replace("LAYERID", str(idx-1)) for idx in range(1, 5)]
 
@@ -317,8 +319,8 @@ if __name__ == '__main__':
 
     atlas_bfield = 2
 
-    layersATL_e, layersATL_mu, layersATL_pi = InitLayersATLAS(ATLASdir)
-    ion_e, ion_mu, ion_pi = InitIonization(ATLASdir)
+    layers_atlas_e, layers_atlas_mu, layers_atlas_pi = init_layers_atlas(ATLASdir)
+    ion_e, ion_mu, ion_pi = init_ionization(ATLASdir)
 
     event_header = str()
     with open(hep_file, 'rb') as input_file:
