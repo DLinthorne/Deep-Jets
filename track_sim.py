@@ -250,6 +250,19 @@ def adjust_origin(line, pdg, z_origin, rcalo, zcalo):
         return [pmod/np.cosh(new_eta), line[1], new_eta, line[3]]
 
 
+def add_photons(calo_depo, calo_size, eta_range, barcode_max):
+    gamma_list = [[(i[0] + 0.5) * calo_size[0], (i[1] + 0.5) * calo_size[1] + eta_range[0],
+                  calo_depo[i[0], i[1]]] for i in np.asarray(calo_depo.nonzero()).transpose()]
+
+    gamma_list_2 = [[x[0], x[1], x[2]] if x[1] <= eta_range[1] else
+                  [x[0], x[1] - 2. * eta_range[1], x[2]] for x in gamma_list]
+    if len(gamma_list_2) > 0:
+        return [['P', barcode_max+i+1, 22] + to_cartesian([x[2] / np.cosh(x[1]), x[0], x[1], 0.0]) +
+                [1, 0., 0., 0, 0] for i, x in enumerate(gamma_list_2)], barcode_max + len(gamma_list_2)
+    else:
+        return [], barcode_max
+
+
 def read_grid(fname, with_header=True):
     """
     Arguments:
@@ -287,6 +300,8 @@ def init_layers_atlas(atlas_dir ="/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&
     layers_mu -- interpolated slines of each layer relevant for muon propagation
     layers_pi -- interpolated slines of each layer relevant for pion propagation
     """
+
+    # test git
     pipe = read_grid(atlas_dir + 'ATLASEMlossPipe.csv')
     mat = read_grid(atlas_dir + 'ATLASEMlossService.csv')
     ibl = read_grid(atlas_dir + 'ATLASEMlossIBL.csv')
@@ -358,12 +373,6 @@ def init_ionization(atlas_dir ="/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&_D
             read_grid(atlas_dir + 'IonElossPis.csv', False)[0])
 
 
-def write_layer_events(layer, timeout_frac, event_header, track_file):
-
-    pickle.dump(event_header[1] + " " + str(timeout_frac), track_file, protocol=0)
-    pickle.dump(layer, track_file, protocol=0)
-
-
 def process_event(hep_file, event_header, ecal_file, trk_file_list, layers_e, layers_mu,
                   layers_meson, ion_e, ion_mu, ion_meson, b_field=2):
 
@@ -387,10 +396,9 @@ def process_event(hep_file, event_header, ecal_file, trk_file_list, layers_e, la
     num_vertices = int(event_header[8])
     # print numvertices
     retrieve_line = hep_file.readline()
-    #while line[0] !=  86:
+    while   retrieve_line[0] !=  86:
     #    ecal_file.write(line)
-    #    line = hep_file.readline()
-    retrieve_line = hep_file.readline()
+        retrieve_line = hep_file.readline()
     z_origin = None
     offset = 0
     four_momentum = [0., 0., 0., 0.]
@@ -412,7 +420,7 @@ def process_event(hep_file, event_header, ecal_file, trk_file_list, layers_e, la
                     np.arctan2(perp_vert_pos[1], perp_vert_pos[0]), float(vertex[5])/10]
 
         particles = [hep_file.readline().split() for x in range(num_in + num_out)]
-
+        #print(particles)
         max_barcode = max([max_barcode]+[int(x[1]) for x in particles])
 
         ready_particles = [x for x in particles if x[8] != '1' or abs(int(x[2])) not in [11, 13, 211, 321]
@@ -423,7 +431,8 @@ def process_event(hep_file, event_header, ecal_file, trk_file_list, layers_e, la
                          abs(np.arctanh(float(x[5])/np.sqrt(float(x[3])**2 + float(x[4])**2 + float(x[5])**2))) <= 3.5]
 
         if len(particle_list) > 0:
-            # print "+++", [sum(i) for i in zip(*[[float(y) for y in x[3:7]]
+            print(particle_list)
+            #print"+++", [sum(i) for i in zip(*[[float(y) for y in x[3:7]]
             #                                     for x in particle_list])]
             four_momentum = [(a+b) for a, b in
                           zip(four_momentum, [sum(i) for i in
@@ -475,17 +484,17 @@ def process_event(hep_file, event_header, ecal_file, trk_file_list, layers_e, la
         #last vertex: add all the brem photons and met
         #print caloparticles
         if vertex_index == num_vertices - 1:
-            list_parts, max_barcode = AddPhotons(calo_photons[0], layers_e[-2][2],
-                                                 [0, r_z_to_eta(layers_e[-2][0][0],
+            list_parts, max_barcode = add_photons(calo_photons[0], layers_e[-2][2],
+                                                  [0, r_z_to_eta(layers_e[-2][0][0],
                                                                 layers_e[-2][0][2])],
-                                                 max_barcode)
+                                                  max_barcode)
             calo_particles.extend(list_parts)
-            list_parts, max_barcode = AddPhotons(calo_photons[1], layers_e[-1][2],
-                                                 [r_z_to_eta(layers_e[-1][0][1],
+            list_parts, max_barcode = add_photons(calo_photons[1], layers_e[-1][2],
+                                                  [r_z_to_eta(layers_e[-1][0][1],
                                                              layers_e[-1][0][2]),
                                                   r_z_to_eta(layers_e[-1][0][0],
                                                              layers_e[-1][0][2])],
-                                                 max_barcode)
+                                                  max_barcode)
             calo_particles.extend(list_parts)
         if len(calo_particles) > 0:
             # print "--", [sum(i) for i in zip(*[[float(y) for y in x[3:7]] for x
@@ -502,6 +511,7 @@ def process_event(hep_file, event_header, ecal_file, trk_file_list, layers_e, la
                                   + [np.sqrt(four_momentum[3]**2 - pmod**2.), 1, 0., 0., 0, 0])
 
         out_particles = [' '.join([str(y) for y in x]) for x in ready_particles + calo_particles]
+        print(out_particles)
         #ecal_file.write(' '.join(vertex[:5] +
         #                         [str((vert_pos[2]-z_origin)*10)] + vertex[6:8] +
         #                         [str(len(out_particles)-num_in)] + vertex[9:]) + '\n')
@@ -510,7 +520,7 @@ def process_event(hep_file, event_header, ecal_file, trk_file_list, layers_e, la
         #read next vertex
         retrieve_line = hep_file.readline()
     #write hits (only IBL)
-    #write_layer_events(layer_hits[1], timeouts[1] / max(len(particle_list), 1), event_header, trk_file_list[0])
+    write_layer_events(layer_hits[1], timeouts[1] / max(len(particle_list), 1), event_header, trk_file_list[0])
     #write hits (all layers)
     #[WriteLayersEvent(layerHits[idx], timeouts[idx]/max(len(particle_list),1),event_header,trackerfilelist[idx-1])
     # for idx in range(1,5)]
@@ -519,13 +529,26 @@ def process_event(hep_file, event_header, ecal_file, trk_file_list, layers_e, la
     #return next event header
     return retrieve_line
 
+
+def write_layer_events(layer, timeout_frac, event_header, track_file):
+
+    print("test")
+    print(timeout_frac)
+    print(layer)
+    #pickle.dump(str(event_header[1]) + " " + str(timeout_frac), track_file, protocol=0)
+
+    #with open(track_file, 'wb') as pickle_file:
+    #    pickle.dump(layer, pickle_file)
+    #pickle.dump(layer, track_file, protocol=0)
+
+
 if __name__ == '__main__':
 
     data_dir = "/Users/dlinthorne/Projects/MISC/IDsym_Daniel_&_Dylan/"
 
     atlas_dir = data_dir + "PythonSym/"
-    hep_file = data_dir + "truth/Bkg_truth.hepmc"
-    tracker_file_temp = data_dir + "tracker/" + "Bkg_truth.hepmc".replace("truth", "tracker_LAYERID").replace(".hepmc",
+    hep_file = data_dir + "truth/Signal_truth.hepmc"
+    tracker_file_temp = data_dir + "tracker/" + "test_truth.hepmc".replace("truth", "tracker_LAYERID").replace(".hepmc",
                                                                                                              ".txt")
     tracker_file_list = [tracker_file_temp.replace("LAYERID", str(idx-1)) for idx in range(1, 5)]
 
@@ -537,18 +560,30 @@ if __name__ == '__main__':
     layers_atlas_e, layers_atlas_mu, layers_atlas_pi = init_layers_atlas(atlas_dir)
     ion_e, ion_mu, ion_pi = init_ionization(atlas_dir)
 
-    with open(hep_file, 'rb') as input_file:
-        for index, line_string in enumerate(input_file):
+   # with open(hep_file, 'rb') as input_file:
+    #    for index, line_string in enumerate(input_file):
 
-            if line_string[0] in [85, 72]:
-                continue
-            if line_string[0] == 69:
-                print(line_string.split())
-                event_header = line_string.split()
-                line = process_event(input_file, event_header, Ecal_file, tracker_file_list,
-                                     layers_atlas_e, layers_atlas_mu, layers_atlas_pi, ion_e,
-                                     ion_mu, ion_pi, atlas_bfield)
+    #        if line_string[0] in [85, 72]:
+    #            continue
+    #        if line_string[0] == 69:
+    #            print(line_string.split())
+    #            event_header = line_string.split()
+    #            line = process_event(input_file, event_header, Ecal_file, tracker_file_list,
+    #                                 layers_atlas_e, layers_atlas_mu, layers_atlas_pi, ion_e,
+    #                                 ion_mu, ion_pi, atlas_bfield)
+    input_file = open(hep_file, 'rb')
 
+    line = input_file.readline()
+
+    while line[0] != 69:
+        #print(line[0])
+        line = input_file.readline()
+    while line[0] == 69:
+        #print(line.split())
+        event_header = line.split()
+        line = process_event(input_file, event_header, Ecal_file, tracker_file_list,
+                             layers_atlas_e, layers_atlas_mu, layers_atlas_pi, ion_e,
+                             ion_mu, ion_pi, atlas_bfield)
 
     Ecal_file.close()
     input_file.close()
