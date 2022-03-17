@@ -69,6 +69,7 @@ def rcycl(ptphietam, q, B):
     InTeslaOverGeV2 = 1.69041E+16
     InGeVcm = 1.97327E-14
     UnitsRS = (InTeslaOverGeV2 * InGeVcm)
+    test= 1
 
     tmp = 0.0
     try:
